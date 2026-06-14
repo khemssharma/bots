@@ -123,16 +123,31 @@ const fetchAllPages = async (path) => {
       return;
     }
 
-    // ── 2. Fetch who YOU already follow (to skip duplicates) ────────────────
+    // ── 2. Fetch who YOU already follow and who already follows YOU ─────────
+    // GitHub logins are case-insensitive, so we normalise to lowercase when
+    // building skip sets (while keeping original casing for the follow call).
     console.log(`Fetching accounts you (${GITHUB_USERNAME}) already follow…`);
     const alreadyFollowing = await fetchAllPages(`/users/${GITHUB_USERNAME}/following`);
-    const alreadyFollowingSet = new Set(alreadyFollowing.map((u) => u.login));
+    const alreadyFollowingSet = new Set(alreadyFollowing.map((u) => u.login.toLowerCase()));
     console.log(`You already follow ${alreadyFollowingSet.size} accounts.`);
 
-    // ── 3. Skip yourself and anyone you already follow ──────────────────────
-    const toFollow = targetFollowerLogins.filter(
-      (login) => login !== GITHUB_USERNAME && !alreadyFollowingSet.has(login)
-    );
+    console.log('Fetching your own followers…');
+    const myFollowers = await fetchAllPages('/user/followers');
+    const myFollowerSet = new Set(myFollowers.map((u) => u.login.toLowerCase()));
+    console.log(`You currently have ${myFollowerSet.size} followers.`);
+
+    const selfLogin = GITHUB_USERNAME.toLowerCase();
+
+    // ── 3. Skip yourself, anyone you already follow, and anyone who already ──
+    //       follows you.
+    const toFollow = targetFollowerLogins.filter((login) => {
+      const key = login.toLowerCase();
+      return (
+        key !== selfLogin &&
+        !alreadyFollowingSet.has(key) &&
+        !myFollowerSet.has(key)
+      );
+    });
 
     console.log(
       `\nAfter deduplication: ${toFollow.length} new accounts to follow ` +
@@ -140,7 +155,7 @@ const fetchAllPages = async (path) => {
     );
 
     if (toFollow.length === 0) {
-      console.log('You already follow everyone. Nothing to do.');
+      console.log('Nothing left to follow. Nothing to do.');
       return;
     }
 
